@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Quantum LOL</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600&display=swap" rel="stylesheet" />
+  <style>
+    html, body { margin:0; padding:0; overflow:hidden; height:100%; font-family:'Orbitron',sans-serif; background:#000; color:#00ffff; }
+    canvas#bg { position:absolute; top:0; left:0; z-index:-2; }
+    .grid-overlay { position:fixed; width:100%; height:100%; background:linear-gradient(rgba(0,255,255,0.05) 1px,transparent 1px), linear-gradient(to right,rgba(0,255,255,0.05) 1px,transparent 1px); background-size:40px 40px; z-index:-1; pointer-events:none; }
+    .container { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); text-align:center; z-index:1; padding:20px; border:2px solid #00ffff; border-radius:12px; background:rgba(0,0,0,0.4); box-shadow:0 0 20px #00ffff55; }
+    .container h1 { margin-bottom:1rem; font-size:3rem; text-shadow:0 0 15px #00ffff; }
+    #myTokenDisplay { margin-bottom:1rem; font-size:1.2rem; }
+    .button { margin:8px; padding:12px 36px; font-size:1rem; border:2px solid #00ffff; background:transparent; color:#00ffff; border-radius:8px; cursor:pointer; transition:0.3s; box-shadow:0 0 10px #00ffff44; }
+    .button:hover { background:#00ffff; color:#000; box-shadow:0 0 20px #00ffffaa; }
+    .modal { display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:#0f0c29dd; padding:20px; border-radius:10px; box-shadow:0 0 25px #00ffff; z-index:2; text-align:center; }
+    .modal h2 { margin-top:0; }
+    .modal input[type="text"], .modal input[type="file"] { margin:10px 0; padding:8px; width:200px; background:#111; color:#00ffff; border:1px solid #00ffff; border-radius:4px; }
+    .close-btn { margin-top:10px; background:crimson; border:none; padding:8px 20px; color:#fff; border-radius:6px; cursor:pointer; }
+    .close-btn:hover { background:darkred; }
+    #output { position:absolute; bottom:10px; left:10px; color:#00ffff; font-size:0.9rem; max-width:90%; white-space:pre-wrap; z-index:1; }
+  </style>
+</head>
+<body>
+  <canvas id="bg"></canvas>
+  <div class="grid-overlay"></div>
+  <div class="container">
+    <h1>Quantum LOL</h1>
+    <div id="myTokenDisplay">My Token: <span id="myTokenStatic">—</span></div>
+    <button class="button" onclick="openSyncModal()">Connect Device</button>
+    <button class="button" onclick="openFileModal()">Send File</button>
+    <button class="button" onclick="openScreenModal()">View Screen</button>
+  </div>
+  <div class="modal" id="syncModal">
+    <h2>Enter Pair Token</h2>
+    <input type="text" id="remoteToken" placeholder="Target Token..." />
+    <button class="button" onclick="submitToken()">Sync</button>
+    <button class="close-btn" onclick="closeSyncModal()">Close</button>
+  </div>
+  <div class="modal" id="fileModal">
+    <h2>Send File</h2>
+    <input type="file" id="fileInput" />
+    <button class="button" onclick="sendFile()">Send</button>
+    <button class="close-btn" onclick="closeFileModal()">Close</button>
+  </div>
+  <div class="modal" id="screenModal">
+    <h2>Remote Screen</h2>
+    <img id="screenView" style="width:800px;height:450px;display:block;margin:0 auto;border:2px solid #00ffff;" />
+    <button class="close-btn" onclick="closeScreenModal()">Close</button>
+  </div>
+  <div id="output"></div>
+  <script>
+    const canvas = document.getElementById('bg'), ctx = canvas.getContext('2d');
+    let w=window.innerWidth, h=window.innerHeight;
+    canvas.width=w; canvas.height=h;
+    window.onresize=()=>{w=canvas.width=innerWidth;h=canvas.height=innerHeight; populateParticles(); nowLines=[]; };
+    let particles=[], nowLines=[];
+    const count=80, fontSize=16;
+    function populateParticles(){particles=[]; for(let i=0;i<count;i++)particles.push({x:Math.random()*w,y:Math.random()*h,vx:Math.random()-0.5,vy:Math.random()-0.5,r:Math.random()*2+1});}
+    populateParticles();
+    setInterval(()=>{for(let i=0;i<20;i++)nowLines.push({x:Math.random()*w,y:-50,len:Math.random()*80+40,speed:Math.random()*2+1}); while(nowLines.length>200)nowLines.shift();},400);
+    function draw(){
+      ctx.clearRect(0,0,w,h);
+      particles.forEach(p=>{ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,2*Math.PI);ctx.fillStyle='#00ffff88';ctx.fill();p.x+=p.vx;p.y+=p.vy;if(p.x<0||p.x>w)p.vx*=-1;if(p.y<0||p.y>h)p.vy*=-1;});
+      ctx.strokeStyle='#00ffff44';ctx.lineWidth=1;
+      nowLines.forEach(l=>{ctx.beginPath();ctx.moveTo(l.x,l.y);ctx.lineTo(l.x,l.y+l.len);ctx.stroke();l.y+=l.speed;});
+      requestAnimationFrame(draw);
+    }
+    draw();
+    let socket, myToken='';
+    function log(msg){document.getElementById('output').innerText=msg;setTimeout(()=>document.getElementById('output').innerText='',3000);}
+    function connectWS(){
+      socket=new WebSocket('ws://localhost:8080');
+      socket.onopen=()=>log('Connected to server');
+      socket.onerror=()=>log('WS error');
+      socket.onmessage=e=>{const m=JSON.parse(e.data);switch(m.type){case 'token':myToken=m.token;document.getElementById('myTokenStatic').innerText=myToken;log('Token received');break;case 'deviceList':log(`Devices: ${m.devices.join(',')}`);break;case 'syncRequest':alert(`Sync from ${m.fromToken}`);socket.send(JSON.stringify({type:'syncAck',targetToken:m.fromToken,data:'ok'}));log('Sync ack');break;case 'syncAck':log('Peer connected');break;case 'file':alert(`File from ${m.fromToken}: ${m.fileName}`);break;case 'screenRequest':startScreen(m.fromToken);break;case 'screenFrame':document.getElementById('screenView').src=m.frame;break;}};}
+    window.onload=connectWS;
+    function openSyncModal(){document.getElementById('syncModal').style.display='block';}
+    function closeSyncModal(){document.getElementById('syncModal').style.display='none';}
+    function submitToken(){const tgt=document.getElementById('remoteToken').value.trim();if(!tgt){alert('Enter token');return;}socket.send(JSON.stringify({type:'syncRequest',targetToken:tgt,data:'hi'}));closeSyncModal();}
+    function openFileModal(){document.getElementById('fileModal').style.display='block';}
+    function closeFileModal(){document.getElementById('fileModal').style.display='none';}
+    function sendFile(){const f=document.getElementById('fileInput').files[0];if(!f){alert('Select file');return;}const rdr=new FileReader();rdr.onload=()=>{const tgt=prompt('Token?');socket.send(JSON.stringify({type:'file',targetToken:tgt,fileName:f.name,fileData:rdr.result}));closeFileModal();};rdr.readAsDataURL(f);}
+    function openScreenModal(){document.getElementById('screenModal').style.display='block';}
+    function closeScreenModal(){document.getElementById('screenModal').style.display='none';clearInterval(screenInterval);}
+    const { desktopCapturer } = require('electron'); let screenInterval;
+    function startScreen(requester){clearInterval(screenInterval);openScreenModal();screenInterval=setInterval(async()=>{const src=await desktopCapturer.getSources({types:['screen']});const img=src[0].thumbnail.toDataURL();socket.send(JSON.stringify({type:'screenFrame',targetToken:requester,frame:img}));},500);}
+ </script>
+</body>
+</html>

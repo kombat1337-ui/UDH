@@ -1,0 +1,8 @@
+
+QUANTUM LOL - USER MANUAL (EN)
+
+1. Launch the application.
+2. Copy your token.
+3. Connect devices via token.
+4. Sync files / view screens.
+
